@@ -1,15 +1,16 @@
 const mongoose = require("mongoose");
 
-const resultSchema = new mongoose.Schema({
-  brand: String,
-  category: String,
-  rank: Number,
-});
-
+const rankingSchema = new mongoose.Schema(
+  {
+    brand: String,
+    avg: Number,
+  },
+  { _id: false, strict: false }
+);
 const experimentSchema = new mongoose.Schema(
   {
     user: { type: mongoose.Types.ObjectId, ref: "User" },
-    results: [resultSchema],
+    rankings: [rankingSchema],
   },
   { timestamps: true }
 );

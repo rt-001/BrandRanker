@@ -4,15 +4,16 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 function parse(text) {
   return text
     .split("\n")
-    .map((l) => l.match(/^(\d+)\.\s*(.+)$/))
-    .filter((m) => m)
-    .map(([, num, brand]) => ({ rank: +num, brand }));
+    .map((line) => line.match(/^(\d+)\.\s*(.+)$/))
+    .filter((match) => match)
+    .map(([, rank, brand]) => ({ rank: +rank, brand }));
 }
 
 exports.callLLM = async function (prompt) {
-  const resp = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
+  const response = await openai.chat.completions.create({
+    model: "gpt-3.5-turbo",
     messages: [{ role: "user", content: prompt }],
   });
-  return parse(resp.choices[0].message.content);
+
+  return parse(response.choices[0].message.content);
 };

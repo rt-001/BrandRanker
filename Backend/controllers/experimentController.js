@@ -1,44 +1,103 @@
 const Experiment = require("../models/Experiment");
 const { callLLM } = require("../utils/llm");
+const runExperiment = async (req, res) => {
+  try {
+    const { brands = [], categories = [] } = req.body;
+    if (!brands.length || !categories.length) {
+      return res
+        .status(400)
+        .json({ error: "Need at least 1 brand & 1 category" });
+    }
+    const results = [];
+    for (let cat of categories) {
+      const prompt = `Rank ${brands.join(", ")} for ${cat}`;
+      const ranking = await callLLM(prompt);
+      ranking.forEach((r) => {
+        results.push({ brand: r.brand, category: cat, rank: r.rank });
+      });
+    }
+    const resArr = [];
+    for (let i = 0; i < brands.length; i++) {
+      const brand = brands[i];
+      const entry = { brand };
+      let total = 0;
+      let count = 0;
 
-exports.runExperiment = async (req, res) => {
-  const { brands = [], categories = [] } = req.body;
-  if (!brands.length || !categories.length) {
-    return res
-      .status(400)
-      .json({ error: "Need at least 1 brand & 1 category" });
-  }
+      for (let j = 0; j < categories.length; j++) {
+        const cat = categories[j];
+        const match = results.find(
+          (r) =>
+            r.brand.toLowerCase() === brand.toLowerCase() &&
+            r.category.toLowerCase() === cat.toLowerCase()
+        );
 
-  const results = [];
-  for (let cat of categories) {
-    const prompt = `Rank ${brands.join(", ")} for ${cat}`;
-    const ranking = await callLLM(prompt);
-    ranking.forEach((r) => {
-      results.push({ brand: r.brand, category: cat, rank: r.rank });
+        if (match) {
+          entry[cat] = match.rank;
+          total += match.rank;
+          count++;
+        } else {
+          entry[cat] = null;
+        }
+      }
+
+      entry.avg = count > 0 ? total / count : null;
+      resArr.push(entry);
+    }
+    const existingExp = await Experiment.find({
+      user: req.user._id,
+      rankings: resArr,
     });
+    if (!existingExp?.length) {
+      const exp = new Experiment({ user: req.user._id, rankings: resArr });
+      await exp.save();
+      res.json({
+        experimentId: exp._id,
+        results: resArr,
+        message: "Experiment completed successfully",
+      });
+      return;
+    }
+    res.json({
+      experimentId: existingExp._id,
+      results: resArr,
+      message: "Experiment already exists",
+    });
+    return;
+  } catch (err) {
+    console.error("Error running experiment:", err);
+    res.status(500).json({ error: "Internal server error" });
   }
-
-  const exp = new Experiment({ user: req.user._id, results });
-  await exp.save();
-
-  // compute averages
-  const avg = brands.map((b) => {
-    const arr = results.filter((r) => r.brand === b).map((r) => r.rank);
-    return { brand: b, avg: arr.reduce((a, b) => a + b, 0) / arr.length };
-  });
-
-  res.json({ experimentId: exp._id, averages: avg });
 };
 
-exports.listExperiments = async (req, res) => {
-  const exps = await Experiment.find({ user: req.user._id });
-  res.json(exps);
+const listExperiments = async (req, res) => {
+  try {
+    const exps = await Experiment.find({ user: req.user._id });
+    res.json(exps);
+    return;
+  } catch (err) {
+    console.error("Error listing experiments:", err);
+    res.status(500).json({ error: "Internal server error" });
+    return;
+  }
 };
 
-exports.getExperiment = async (req, res) => {
-  const exp = await Experiment.findById(req.params.id);
-  if (!exp || exp.user.toString() !== req.user._id.toString()) {
-    return res.status(404).json({ error: "Not found" });
+const getExperiment = async (req, res) => {
+  try {
+    const exp = await Experiment.findById(req.params.id);
+    if (!exp || exp.user.toString() !== req.user._id.toString()) {
+      return res.status(404).json({ error: "Not found" });
+    }
+    res.json(exp);
+    return;
+  } catch (err) {
+    console.error("Error getting experiment:", err);
+    res.status(500).json({ error: "Internal server error" });
+    return;
   }
-  res.json(exp);
+};
+
+module.exports = {
+  runExperiment,
+  listExperiments,
+  getExperiment,
 };
